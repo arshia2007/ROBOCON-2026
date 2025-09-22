@@ -94,6 +94,7 @@ struct ControllerData {
     int16_t turn_pwm;
     int16_t bldc_rpm;
 };
+
 #pragma pack(pop) // restore previous alignment
 
 

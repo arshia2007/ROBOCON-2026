@@ -2,8 +2,8 @@
 #include <Adafruit_BNO055.h>
 #include <Wire.h>
 
-#define RADIUS 0.0635  
-#define ROBOT_RADIUS 0.4
+#define RADIUS 0.127
+#define ROBOT_RADIUS 0.3
 float Kp_pos=30.0; 
 float Kp_vel=0.0;
 float Kp_acc=0.0;

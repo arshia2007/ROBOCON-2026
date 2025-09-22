@@ -3,13 +3,19 @@
 #include <Adafruit_BNO055.h>
 #include <ClientServerEthernet.h>
 
-#define RADIUS 0.0635  
-#define ROBOT_RADIUS 0.4
+#define RADIUS 0.063
+int ROBOT_RADIUS[3]  = {0.3,0.3,0.28};
 
-Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28, &Wire1); // Use   Wire2 for I2C communication
+// Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28, &Wire1); // Use   Wire2 for I2C communication
 
-int pwmL_pin[3] = { 2, 0, 6 };
-int pwmR_pin[3] = { 3, 1, 7 };
+// int pwmL_pin[3] = { 0, 5, 12};
+// int pwmR_pin[3] = { 1, 4, 13};
+
+// int pwmL_pin[3] = { 12, 0, 5};
+// int pwmR_pin[3] = { 13, 1, 4};
+
+int pwmL_pin[3] = {36, 0, 5};
+int pwmR_pin[3] = {37, 1, 4};
 
 bool data_update=true;
 IntervalTimer timer;
@@ -41,16 +47,16 @@ void setup() {
   Serial.begin(115200);
   // pinMode(13,OUTPUT);
   // digitalWrite(13,HIGH);
-  Wire1.begin();
+  // Wire1.begin();
 
-  while (!bno.begin()) {
-    Serial.println("BNO055 not detected. Check connections to SDA2/SCL2!");
-    // 0
-  }
-  Serial.println("BNO055 detected!");
+  // while (!bno.begin()) {
+  //   Serial.println("BNO055 not detected. Check connections to SDA2/SCL2!");
+  //   // 0
+  // }
+  // Serial.println("BNO055 detected!");
 
   // Optional: Use external crystal for better precision
-  bno.setExtCrystalUse(true);
+  // bno.setExtCrystalUse(true);
 
   analogWriteResolution(14);
   
@@ -60,8 +66,7 @@ void setup() {
   con = ClientServerEthernet<ControllerData>(client_ip, subnet_mask, server_ip, &jetdata);
 
   timer.begin(drive_ik, dt*1000000);
-
-
+  // pidTimer.begin(pid, dt*1000000);
 }
 
 float mapFloat(float x, float in_min, float in_max, float out_min, float out_max) {
@@ -69,25 +74,27 @@ float mapFloat(float x, float in_min, float in_max, float out_min, float out_max
 }
 
 void inverseKinematics(float vx, float vy, float omega, float* rpms) {
-  float w1 = (-sin(0) * vx + cos(0) * vy + ROBOT_RADIUS * omega) / RADIUS;
-  float w2 = (-sin(2 * PI / 3) * vx + cos(2 * PI / 3) * vy + ROBOT_RADIUS * omega) / RADIUS;
-  float w3 = (-sin(4 * PI / 3) * vx + cos(4 * PI / 3) * vy + ROBOT_RADIUS * omega) / RADIUS;
+  float w1 = (-sin(0) * vx + cos(0) * vy + ROBOT_RADIUS[0] * omega) / RADIUS;
+  float w2 = (-sin(2 * PI / 3) * vx + cos(2 * PI / 3) * vy + ROBOT_RADIUS[1] * omega) / RADIUS;
+  float w3 = (-sin(4 * PI / 3) * vx + cos(4 * PI / 3) * vy + ROBOT_RADIUS[2] * omega) / RADIUS;
 
   // rad/s --> RPM
   rpms[0] = w1 * 60.0 / (2 * PI);
   rpms[1] = w2 * 60.0 / (2 * PI);
   rpms[2] = w3 * 60.0 / (2 * PI);
 
-  for(int i = 0; i < 3; i++){
-    rpms[i] = mapFloat(rpms[i], -175, 175, max_rpm, -max_rpm);
-  }
+  // for(int i = 0; i < 3; i++){
+  //   rpms[i] = mapFloat(rpms[i], -175, 175, max_rpm, -max_rpm);
+  //   // Serial.printf("RPM_%d_input:%0.2f  ",i+1, rpms[i]);
+  //   // Serial.println();
+  // }
 
 }
 
 void runMotor(int pwm_val, int pwmLPin, int pwmRPin)
 {
-  analogWrite(pwmLPin, (pwm_val <= 0 ? pwm_val*-1 : 0));
-  analogWrite(pwmRPin, (pwm_val >= 0 ? pwm_val : 0));
+  analogWrite(pwmRPin, (pwm_val <= 0 ? pwm_val*-1 : 0));
+  analogWrite(pwmLPin, (pwm_val >= 0 ? pwm_val : 0)); 
 }
 
 int y=0;
@@ -121,12 +128,14 @@ void drive_ik(){
       w = map(jetdata.axis[2], 125, 0, 0, -255);
     else
       w=0;
-    y = psAxisY;
-    x = psAxisX;
+    x = psAxisY;
+    y = psAxisX;
   }
+  Serial.printf("x:%d  y:%d  w:%d",x,y,w);
+  Serial.println();
 
   // imu::Vector<3> accel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);  // linear vel
-  imu::Vector<3> gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE); // amgular vel in degree/s
+  // imu::Vector<3> gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE); // amgular vel in degree/s
   // imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);    // heading
 
   // gyro_z = gyro.z(); 
@@ -134,18 +143,25 @@ void drive_ik(){
 
   float rpm_cmd[3];
   inverseKinematics(x, y, w, rpm_cmd);
+  for(int i = 0; i < 3; i++){
+    // Serial.printf("RPM_%d_input:%0.2f  ",i+1, rpm_cmd[i]);
+    // Serial.println();
+  }
 
   for (int i = 0; i < 3; i++) {
     // rpm_cmd[i] = int(rpm_cmd[i])%14000;
-    rpm_cmd[i] = constrain(rpm_cmd[i], -16383, 16383);
-    runMotor(int(rpm_cmd[i]),pwmL_pin[i],pwmR_pin[i]);
+    rpm_cmd[i] = constrain(rpm_cmd[i], -14000, 14000);
+    runMotor((int)rpm_cmd[i],pwmL_pin[i],pwmR_pin[i]);
+    // Serial.printf("RPM_%d_input:%0.2f  ",i+1, rpm_cmd[i]);
+    // Serial.println();
   }
 }
 
 
-
 void loop() {
-  con.MaintainConnection(false);
-  con.getData(true);
-
+  con.MaintainConnection(false);  // keep false → non-blocking
+  con.getData(true);             
+  // Serial.println("ok");
 }
+
+

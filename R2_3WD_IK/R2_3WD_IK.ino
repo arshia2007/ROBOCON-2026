@@ -95,8 +95,8 @@ ClientServerEthernet<ControllerData> con; // Instance of the ClientServerEtherne
 
 void setup() {
   Serial.begin(115200);
-  // pinMode(13,OUTPUT);
-  // digitalWrite(13,HIGH);
+  pinMode(13,OUTPUT);
+  digitalWrite(13,HIGH);
 
   pinMode(drib_dir,OUTPUT);
   // pinMode(feed_pwmR,OUTPUT);
@@ -240,6 +240,8 @@ if(data_update){
     w = jetdata.turn_pwm;
     psAxisY = 0;
     psAxisX = 0;
+    Serial.printf("x:%d  y:%d  w:%d",x,y,w);
+  Serial.println();
   }
   else if(jetdata.bldc_pwm<0)
   {
@@ -277,7 +279,7 @@ rpm_sp[1] = map(-0.5 * x - 0.852 * y + 0.3*w, -175, 175, max_rpm, -max_rpm);
 rpm_sp[2] = map(-0.5 * x + 0.860 * y + 0.3*w, -175, 175, max_rpm, -max_rpm);
 
 for (int i = 0; i < 3; i++) {
-  // Serial.printf("RPM_%d_input:%0.2f  ", i + 1, rpm_sp[i]);
+  Serial.printf("RPM_%d_input:%0.2f  ", i + 1, rpm_sp[i]);
 }
     //~~this block of code is to take the input from the ps4 controller
 
