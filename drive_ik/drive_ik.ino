@@ -4,7 +4,7 @@
 #include <ClientServerEthernet.h>
 
 #define RADIUS 0.063
-int ROBOT_RADIUS[3]  = {0.3,0.3,0.28};
+int ROBOT_RADIUS[3]  = {0.28,0.3,0.3};
 
 // Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28, &Wire1); // Use   Wire2 for I2C communication
 
@@ -14,8 +14,8 @@ int ROBOT_RADIUS[3]  = {0.3,0.3,0.28};
 // int pwmL_pin[3] = { 12, 0, 5};
 // int pwmR_pin[3] = { 13, 1, 4};
 
-int pwmL_pin[3] = {36, 0, 5};
-int pwmR_pin[3] = {37, 1, 4};
+int pwmL_pin[3] = {5, 36, 0};
+int pwmR_pin[3] = {4, 37, 1};
 
 bool data_update=true;
 IntervalTimer timer;
@@ -66,7 +66,6 @@ void setup() {
   con = ClientServerEthernet<ControllerData>(client_ip, subnet_mask, server_ip, &jetdata);
 
   timer.begin(drive_ik, dt*1000000);
-  // pidTimer.begin(pid, dt*1000000);
 }
 
 float mapFloat(float x, float in_min, float in_max, float out_min, float out_max) {
@@ -83,6 +82,11 @@ void inverseKinematics(float vx, float vy, float omega, float* rpms) {
   rpms[1] = w2 * 60.0 / (2 * PI);
   rpms[2] = w3 * 60.0 / (2 * PI);
 
+  for(int i = 0; i < 3; i++){
+    Serial.printf("RPM_%d_input:%0.2f  ",i+1, rpms[i]);
+    Serial.println();
+  }
+
   // for(int i = 0; i < 3; i++){
   //   rpms[i] = mapFloat(rpms[i], -175, 175, max_rpm, -max_rpm);
   //   // Serial.printf("RPM_%d_input:%0.2f  ",i+1, rpms[i]);
@@ -91,8 +95,7 @@ void inverseKinematics(float vx, float vy, float omega, float* rpms) {
 
 }
 
-void runMotor(int pwm_val, int pwmLPin, int pwmRPin)
-{
+void runMotor(int pwm_val, int pwmLPin, int pwmRPin){
   analogWrite(pwmRPin, (pwm_val <= 0 ? pwm_val*-1 : 0));
   analogWrite(pwmLPin, (pwm_val >= 0 ? pwm_val : 0)); 
 }
@@ -156,7 +159,6 @@ void drive_ik(){
     // Serial.println();
   }
 }
-
 
 void loop() {
   con.MaintainConnection(false);  // keep false → non-blocking
