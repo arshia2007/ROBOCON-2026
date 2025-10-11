@@ -34,6 +34,7 @@ int x = 0, y = 0, w = 0;
 float dt = 0.075;
 float error_vx, eDer_vx, eInt_vx, error_vy, eDer_vy, eInt_vy; 
 float pid_vx, pid_vy;
+
 float Kp_vx, Kp_vy, Ki_vx, Ki_vy, Kd_vx, Kd_vy;
 float lastError_vx, lastError_vy;
 float vx = 0, vy = 0;
@@ -82,7 +83,7 @@ void motor_update(){
   input();
 
   imu::Vector<3> accel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);  // linear vel
-  // imu::Vector<3> gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE); // amgular vel in degree/s
+  // imu::Vector<3> gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE); // angular vel in degree/s
   // imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);    // heading
 
   float ax = accel.x();
@@ -90,6 +91,9 @@ void motor_update(){
 
   vx += ax * dt;    // actual vel in x
   vy += ay * dt;    // actual vel in y
+
+  Serial.printf("vx:%0.2f   vy:%0.2f",vx ,vy);
+  Serial.println();
 
   // VELOCITY PID
   error_vx = x - vx;
@@ -129,8 +133,10 @@ void motor_update(){
 }
 
 void setup(){
-  pinMode(13,OUTPUT); digitalWrite(13,HIGH);
-  Serial.begin(115200); delay(2000);
+  pinMode(13,OUTPUT); 
+  digitalWrite(13,HIGH);
+  Serial.begin(115200); 
+  delay(2000);
   analogWriteResolution(14);
 
   // Wire1.begin();
