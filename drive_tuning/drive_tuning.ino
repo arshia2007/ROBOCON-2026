@@ -17,7 +17,7 @@ float ROBOT_RADIUS[3] = {28, 30, 30};
 
 int pwmL_pin[3] = {1, 22, 4};
 int pwmR_pin[3] = {0, 23, 5};
-//int max_rpm = 400;
+//int max_rpm = 200;
 
 Encoder m[3] = { Encoder(20, 21), Encoder(40, 41), Encoder(27, 26) };
 
@@ -44,20 +44,22 @@ float state_data[STATE_ARRAY_SIZE];
 float ps4_lx = 0, ps4_ly = 0, ps4_rx = 0, ps4_ry = 0;
 float phone_ax = 0, phone_ay = 0;
   
-// VELOCITY PID - Initialize with default values
+// VELOCITY PID 
 float Kp_vx = 0.0, Ki_vx = 0.0, Kd_vx = 0.0;
 float Kp_vy = 0.0, Ki_vy = 0.0, Kd_vy = 0.0;
 
-float dt = 0.075;
+float dt = 0.001;
 float error_vx, eDer_vx, eInt_vx, error_vy, eDer_vy, eInt_vy; 
 float pid_vx, pid_vy;
 float lastError_vx, lastError_vy;
 float ax = 0, ay = 0;
 float vx = 0, vy = 0;
+float target_vx, target_vy, target_w;
 
 // RPM PID 
 volatile int pwm_pid[] = { 0, 0, 0 };
 volatile float rpm_sp[] = { 0, 0, 0 };
+
 volatile float kp[] = { 09.0, 09.0, 09.0 };
 volatile float ki[] = { 165.0, 165.0, 165.0 };
 volatile float kd[] = { 00.50, 00.50, 00.50 };
@@ -70,8 +72,9 @@ float lastError[] = { 0, 0, 0 };
 volatile long oldPosition[3] = { 0, 0, 0 };
 volatile long count[3] = { 0, 0, 0 };
 volatile long newPosition[3] = { 0, 0, 0 };
+
 volatile float rpm_rt[3] = { 0, 0, 0 };
-float cpr[] = {700.0, 1300.0, 700.0};
+float cpr[] = {700.0, 1300.0, 1300.0};
 
 // Publishing timing
 unsigned long last_publish_time = 0;
@@ -114,15 +117,14 @@ void tuning_callback(const void* msgin) {
   
   if (tuning_cmd->data.size >= TUNING_ARRAY_SIZE) {
     // Extract data from Python node
-    // PS4 and Phone data
-    ps4_lx = tuning_cmd->data.data[0] * -375;   // PS4 Left Stick X
+    ps4_lx = tuning_cmd->data.data[0] * 375;   // PS4 Left Stick X
     ps4_ly = tuning_cmd->data.data[1] * 375;    // PS4 Left Stick Y  
     ps4_rx = tuning_cmd->data.data[2];          // PS4 Right Stick X
     ps4_ry = tuning_cmd->data.data[3];          // PS4 Right Stick Y
+
     phone_ax = tuning_cmd->data.data[4];        // Phone Accel X
     phone_ay = tuning_cmd->data.data[5];        // Phone Accel Y
-    
-    // Extract PID parameters
+
     Kp_vx = tuning_cmd->data.data[6];           // Kp for VX
     Ki_vx = tuning_cmd->data.data[7];           // Ki for VX
     Kd_vx = tuning_cmd->data.data[8];           // Kd for VX
@@ -130,7 +132,7 @@ void tuning_callback(const void* msgin) {
     Ki_vy = tuning_cmd->data.data[10];          // Ki for VY
     Kd_vy = tuning_cmd->data.data[11];          // Kd for VY
     
-//    Serial.printf("📱 Received - PS4(LX:%.1f, LY:%.1f) Phone(AX:%.3f, AY:%.3f) ", 
+//    Serial.printf("Received - PS4(LX:%.1f, LY:%.1f) Phone(AX:%.3f, AY:%.3f) ", 
 //                  ps4_lx, ps4_ly, phone_ax, phone_ay);
 //    Serial.printf("PID(VX: Kp=%.2f, Ki=%.2f, Kd=%.2f | VY: Kp=%.2f, Ki=%.2f, Kd=%.2f)", 
 //                  Kp_vx, Ki_vx, Kd_vx, Kp_vy, Ki_vy, Kd_vy);
@@ -138,7 +140,6 @@ void tuning_callback(const void* msgin) {
   }
 }
 
-// === YOUR EXISTING FUNCTIONS ===
 float mapFloat(float x, float in_min, float in_max, float out_min, float out_max) {
   return (x - in_min)*(out_max - out_min)/(in_max - in_min) + out_min;
 }
@@ -152,15 +153,64 @@ void inverseKinematics(float vy, float vx, float omega, float* rpms) {
   rpms[0] = w1*60.0/(2*PI);
   rpms[1] = w2*60.0/(2*PI);
   rpms[2] = w3*60.0/(2*PI);
+
+//  for(int i = 0; i<3; i++){
+//    rpms[i] = constrain(rpms[i], -max_rpm, max_rpm);
+//  }
+
+//  rpms[0] = map(x + 0.3*w, -175, 175, max_rpm, -max_rpm);
+//  rpms[1] = map(-0.5 * x - 0.852 * y + 0.3*w, -175, 175, max_rpm, -max_rpm);
+//  rpms[2] = map(-0.5 * x + 0.860 * y + 0.3*w, -175, 175, max_rpm, -max_rpm);
 }
 
 void runMotor(int pwm_val, int pwmLPin, int pwmRPin){
-  analogWrite(pwmRPin, (pwm_val <= 0 ? -pwm_val : 0));
+  analogWrite(pwmRPin, (pwm_val <= 0 ? -1*pwm_val : 0));
   analogWrite(pwmLPin, (pwm_val >= 0 ? pwm_val : 0));
 }
 
-
 IntervalTimer motorTimer;
+IntervalTimer velTimer;
+
+float rpm_cmd[3];
+
+void vel_update(){
+    ax = phone_ax;
+    ay = phone_ay;
+  
+    vx =vx+ ax * dt*100;    // actual vel in x in cm/s
+    vy = vy+ay * dt*100;    // actual vel in y
+  
+    vx =vx* 0.95;
+    vy =vy* 0.95;
+
+    // Serial.printf("vx:%0.2f   vy:%0.2f   ",vx ,vy);
+  
+    target_vx = ps4_lx;        
+    target_vy = ps4_ly;        
+    target_w = ps4_rx;  
+  
+    // VELOCITY PID
+    error_vx = target_vx - vx;
+    eDer_vx = (error_vx - lastError_vx)/dt;
+    eInt_vx = eInt_vx + error_vx * dt;
+    pid_vx = Kp_vx * error_vx + Ki_vx * eInt_vx + Kd_vx * eDer_vx;
+    lastError_vx = error_vx;
+  
+    error_vy = target_vy - vy;
+    eDer_vy = (error_vy - lastError_vy)/dt;
+    eInt_vy = eInt_vy + error_vy * dt;
+    pid_vy = Kp_vy * error_vy + Ki_vy * eInt_vy + Kd_vy * eDer_vy;
+    lastError_vy = error_vy;
+    
+  
+//    float rpm_cmd[3];
+    inverseKinematics(pid_vx, pid_vy, target_w, rpm_cmd); 
+  
+    Serial.printf("setpoint_vx:%.2f, setpoint_vy:%.2f, actual_vx:%.2f, actual_vy:%.2f", 
+                    target_vx, target_vy, vx, vy);
+    Serial.println();
+  
+}
 
 void motor_update(){
   for (int i = 0; i < 3; i++) {
@@ -168,6 +218,8 @@ void motor_update(){
     ::count[i] = abs(newPosition[i] - oldPosition[i]);
     rpm_rt[i] = ::count[i] / cpr[i] * 600 * 4.0 / 3;
     rpm_rt[i] *= newPosition[i] < oldPosition[i] ? -1 : 1;
+//     Serial.printf("RPM_output(motor: %d):%0.2f ", i + 1, rpm_rt[i]);
+//     Serial.println();
     ::count[i] = 0;
     oldPosition[i] = newPosition[i];
   }
@@ -176,52 +228,51 @@ void motor_update(){
 //  imu::Vector<3> accel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
 //  float ax = accel.x();
 //  float ay = accel.y();
-  ax = phone_ax;
-  ay = phone_ay;
 
-  vx += ax * dt*100;  //in cm/s
-  vy += ay * dt*100;
+//  ax = phone_ax;
+//  ay = phone_ay;
+//
+//  vx =vx+ ax * dt*100;    // actual vel in x in cm/s
+//  vy = vy+ay * dt*100;    // actual vel in y
+//
+//  vx =vx* 0.95;
+//  vy =vy* 0.95;
 
-  // Apply some damping to prevent infinite integration
-  vx *= 0.95;
-  vy *= 0.95;
-
-  // === CHOOSE CONTROL INPUT SOURCE ===
-  float target_vx, target_vy, target_w;
+  // Serial.printf("vx:%0.2f   vy:%0.2f   ",vx ,vy);
   
-  target_vx = ps4_lx;        
-  target_vy = ps4_ly;        
-  target_w = ps4_rx;  
-  
-
-  // VELOCITY PID
-  error_vx = target_vx - vx;
-  eDer_vx = (error_vx - lastError_vx)/dt;
-  eInt_vx = eInt_vx + error_vx * dt;
-  pid_vx = Kp_vx * error_vx + Ki_vx * eInt_vx + Kd_vx * eDer_vx;
-  lastError_vx = error_vx;
-
-  error_vy = target_vy - vy;
-  eDer_vy = (error_vy - lastError_vy)/dt;
-  eInt_vy = eInt_vy + error_vy * dt;
-  pid_vy = Kp_vy * error_vy + Ki_vy * eInt_vy + Kd_vy * eDer_vy;
-  lastError_vy = error_vy;
-  
-
-  float rpm_cmd[3];
-  inverseKinematics(pid_vy, pid_vx, target_w, rpm_cmd); 
-
-  Serial.printf("setpoint_vx:%.2f, setpoint_vy:%.2f, actual_vx:%.2f, actual_vy:%.2f", 
-                  target_vx, target_vy, vx, vy);
-  Serial.println();
+//  target_vx = ps4_lx;        
+//  target_vy = ps4_ly;        
+//  target_w = ps4_rx;  
+//
+//  // VELOCITY PID
+//  error_vx = target_vx - vx;
+//  eDer_vx = (error_vx - lastError_vx)/dt;
+//  eInt_vx = eInt_vx + error_vx * dt;
+//  pid_vx = Kp_vx * error_vx + Ki_vx * eInt_vx + Kd_vx * eDer_vx;
+//  lastError_vx = error_vx;
+//
+//  error_vy = target_vy - vy;
+//  eDer_vy = (error_vy - lastError_vy)/dt;
+//  eInt_vy = eInt_vy + error_vy * dt;
+//  pid_vy = Kp_vy * error_vy + Ki_vy * eInt_vy + Kd_vy * eDer_vy;
+//  lastError_vy = error_vy;
+//  
+//
+//  float rpm_cmd[3];
+//  inverseKinematics(pid_vx, pid_vy, target_w, rpm_cmd); 
+//
+//  Serial.printf("setpoint_vx:%.2f, setpoint_vy:%.2f, actual_vx:%.2f, actual_vy:%.2f", 
+//                  target_vx, target_vy, vx, vy);
+//  Serial.println();
 
 //   float rpm_cmd[3];
 //   inverseKinematics(target_vx, target_vy, target_w, rpm_cmd);
 
+  // RPM PID
   for (int i = 0; i < 3; i++) {
     error[i] = rpm_cmd[i] - rpm_rt[i];
-    eDer[i] = (error[i] - lastError[i]) / dt;
-    eInt[i] = eInt[i] + error[i] * dt;
+    eDer[i] = (error[i] - lastError[i]) / 0.075;
+    eInt[i] = eInt[i] + error[i] * 0.075;
 
     pwm_pid[i] = int(kp[i] * error[i] + ki[i] * eInt[i] + kd[i] * eDer[i]);
     pwm_pid[i] = constrain(pwm_pid[i], -16383, 16383);
@@ -259,12 +310,12 @@ void setup(){
 
   while (!Serial) delay(10);
 
-  Serial.println("🤖 Teensy Tuning Control Node Starting...");
+  Serial.println("Teensy Tuning Control Node Starting...");
 
   /* Initialize the sensor */
   // Commented out for now as per your code
   // if (!bno.begin()) {
-  //   Serial.print("❌ Ooops, no BNO055 detected ... Check your wiring or I2C ADDR!");
+  //   Serial.print("Ooops, no BNO055 detected ... Check your wiring or I2C ADDR!");
   //   while (1);
   // }
   // delay(1000);
@@ -272,8 +323,6 @@ void setup(){
   // Micro-ROS initialization
   allocator = rcl_get_default_allocator();
   RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
-  
-  // Change node name to match Python
   RCCHECK(rclc_node_init_default(&node, "tuning", "", &support));
 
   // Setup messages
@@ -298,13 +347,20 @@ void setup(){
   RCCHECK(rclc_executor_add_subscription(&executor, &tuning_subscriber, &tuning_msg, &tuning_callback, ON_NEW_DATA));
 
   motorTimer.begin(motor_update, 75*1000); // every 75ms
+  velTimer.begin(vel_update, 1000); // every 1ms
+
+  velTimer.priority(0);
+  motorTimer.priority(1);  
   
-  Serial.println("✅ Teensy Tuning Node Ready!");
-  Serial.println("📥 Listening: tuning_commands (12 floats)");
-  Serial.println("📤 Publishing: teensy_state (4 floats)");
-  Serial.println("🎮 Control Sources: PS4 sticks + Phone accelerometer");
-  Serial.println("🔧 PID Parameters: Received via ROS from Python");
+  Serial.println("Teensy Tuning Node Ready!");
+  Serial.println("Listening: tuning_commands (12 floats)");
+  Serial.println("Publishing: teensy_state (4 floats)");
+  Serial.println("Control Sources: PS4 sticks + Phone accelerometer");
+  Serial.println("PID Parameters: Received via ROS from Python");
 }
+
+//int currTIme = 0;
+//int lastTime = 0;
 
 // === MAIN LOOP ===
 void loop(){
@@ -321,4 +377,24 @@ void loop(){
     
     last_publish_time = current_time;
   }
+
+//  unsigned long currTime = millis();
+//  if (currTime - lastTime >= 1) {  
+//      float dt = (currTime - lastTime) / 1000.0; 
+//      
+//        ax = phone_ax;
+//        ay = phone_ay;
+//      
+//        vx =vx+ ax * dt*100;    // actual vel in x in cm/s
+//        vy = vy+ay * dt*100;    // actual vel in y
+//      
+//        vx =vx* 0.95;
+//        vy =vy* 0.95;
+//            
+//      lastTime = currTime;
+//  }
+
+  
+
+  
 }

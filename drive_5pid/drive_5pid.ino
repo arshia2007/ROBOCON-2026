@@ -24,7 +24,8 @@ Encoder m[3] = { Encoder(20, 21), Encoder(40, 41), Encoder(27, 26) };
 
 
 rcl_subscription_t subscriber;
-sensor_msgs__msg__Joy msg;  // Changed from sensor_msgs_msg_Joy to match Code 1
+sensor_msgs__msg__Joy msg;  
+
 rclc_executor_t executor;
 rcl_allocator_t allocator;
 rclc_support_t support;
@@ -243,7 +244,7 @@ void setup(){
   delay(1000);
 
 
-  // === MICRO-ROS INITIALIZATION (UPDATED FOR ETHERNET) ===
+  // === MICRO-ROS INITIALIZATION ===
   allocator = rcl_get_default_allocator();
   RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));  // Added args to match Code 1
   RCCHECK(rclc_node_init_default(&node, "teensy_ps4_node", "", &support));  // Fixed name
