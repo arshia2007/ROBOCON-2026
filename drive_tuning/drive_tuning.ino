@@ -34,7 +34,7 @@ rclc_support_t support;
 rcl_node_t node;
 
 // Message buffers
-#define TUNING_ARRAY_SIZE 12   // [ps4_lx, ps4_ly, ps4_rx, ps4_ry, phone_ax, phone_ay, Kp_vx, Ki_vx, Kd_vx, Kp_vy, Ki_vy, Kd_vy]  
+#define TUNING_ARRAY_SIZE 16   // [ps4_lx, ps4_ly, ps4_rx, ps4_ry, phone_ax, phone_ay, gyro_z, Kp_vx, Ki_vx, Kd_vx, Kp_vy, Ki_vy, Kd_vy, Kp_z, Ki_z, Kd_z]  
 #define STATE_ARRAY_SIZE 4     // [vx, vy, pid_vx, pid_vy] 
 
 float tuning_data[TUNING_ARRAY_SIZE];
@@ -42,17 +42,19 @@ float state_data[STATE_ARRAY_SIZE];
 
 // === CONTROL VARIABLES ===
 float ps4_lx = 0, ps4_ly = 0, ps4_rx = 0, ps4_ry = 0;
-float phone_ax = 0, phone_ay = 0;
+float phone_ax = 0, phone_ay = 0, gyro_z = 0;
   
 // VELOCITY PID 
 float Kp_vx = 0.0, Ki_vx = 0.0, Kd_vx = 0.0;
 float Kp_vy = 0.0, Ki_vy = 0.0, Kd_vy = 0.0;
+float Kp_z = 0.0, Ki_z = 0.0, Kd_z = 0.0;
 
 float dt = 0.001;
 float error_vx, eDer_vx, eInt_vx, error_vy, eDer_vy, eInt_vy; 
-float pid_vx, pid_vy;
-float lastError_vx, lastError_vy;
-float ax = 0, ay = 0;
+float error_z, eDer_z, eInt_z; 
+float pid_vx, pid_vy, pid_z;
+float lastError_vx, lastError_vy, lastError_z;
+float ax = 0, ay = 0, z = 0;
 float vx = 0, vy = 0;
 float target_vx, target_vy, target_w;
 
@@ -124,13 +126,17 @@ void tuning_callback(const void* msgin) {
 
     phone_ax = tuning_cmd->data.data[4];        // Phone Accel X
     phone_ay = tuning_cmd->data.data[5];        // Phone Accel Y
+    gyro_z = tuning_cmd->data.data[6];          // phone gyro z
 
-    Kp_vx = tuning_cmd->data.data[6];           // Kp for VX
-    Ki_vx = tuning_cmd->data.data[7];           // Ki for VX
-    Kd_vx = tuning_cmd->data.data[8];           // Kd for VX
-    Kp_vy = tuning_cmd->data.data[9];           // Kp for VY
-    Ki_vy = tuning_cmd->data.data[10];          // Ki for VY
-    Kd_vy = tuning_cmd->data.data[11];          // Kd for VY
+    Kp_vx = tuning_cmd->data.data[7];           // Kp for VX
+    Ki_vx = tuning_cmd->data.data[8];           // Ki for VX
+    Kd_vx = tuning_cmd->data.data[9];           // Kd for VX
+    Kp_vy = tuning_cmd->data.data[10];           // Kp for VY
+    Ki_vy = tuning_cmd->data.data[11];          // Ki for VY
+    Kd_vy = tuning_cmd->data.data[12];          // Kd for VY
+    Kp_z = tuning_cmd->data.data[13];         // Kp for Z rotation
+    Ki_z = tuning_cmd->data.data[14];         // Ki for Z rotation  
+    Kd_z = tuning_cmd->data.data[15];         // Kd for Z rotation
     
 //    Serial.printf("Received - PS4(LX:%.1f, LY:%.1f) Phone(AX:%.3f, AY:%.3f) ", 
 //                  ps4_lx, ps4_ly, phone_ax, phone_ay);
@@ -176,9 +182,10 @@ float rpm_cmd[3];
 void vel_update(){
     ax = phone_ax;
     ay = phone_ay;
+    z = gyro_z;
   
-    vx =vx+ ax * dt*100;    // actual vel in x in cm/s
-    vy = vy+ay * dt*100;    // actual vel in y
+    vx = vx + ax * dt*100;    // actual vel in x in cm/s
+    vy = vy + ay * dt*100;    // actual vel in y
   
     vx =vx* 0.95;
     vy =vy* 0.95;
@@ -201,10 +208,17 @@ void vel_update(){
     eInt_vy = eInt_vy + error_vy * dt;
     pid_vy = Kp_vy * error_vy + Ki_vy * eInt_vy + Kd_vy * eDer_vy;
     lastError_vy = error_vy;
+
+    error_z = target_w - z;
+    eDer_z = (error_z - lastError_z)/dt;
+    eInt_z = eInt_z + error_z * dt;
+    pid_z = Kp_z * error_z + Ki_z * eInt_z + Kd_z * eDer_z;
+    lastError_z = error_z;
+
     
   
 //    float rpm_cmd[3];
-    inverseKinematics(pid_vx, pid_vy, target_w, rpm_cmd); 
+    inverseKinematics(pid_vx, pid_vy, pid_z, rpm_cmd); 
   
     Serial.printf("setpoint_vx:%.2f, setpoint_vy:%.2f, actual_vx:%.2f, actual_vy:%.2f", 
                     target_vx, target_vy, vx, vy);
